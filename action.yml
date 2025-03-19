@@ -1,0 +1,67 @@
+name: "Changed Files"
+description: "A simple action that retrieves the list of changed files in a pull request using the GitHub CLI and can filter using regex."
+
+outputs:
+  all_changed_files:
+    description: "A space-separated list of all changed files."
+    value: ${{ steps.main.outputs.all_changed_files }}
+  all_changed_files_count:
+    description: "The number of changed files."
+    value: ${{ steps.main.outputs.all_changed_files_count }}
+
+inputs:
+  files:
+    description: "File inclusion patterns as regex (one per line). Leave empty to include all files."
+    required: false
+    default: ""
+  exclude:
+    description: "File exclusion patterns as regex (one per line). Leave empty to exclude no files."
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - id: main
+      run: |
+        if [ -z "$GH_TOKEN" ]; then
+          export GH_TOKEN=$GITHUB_TOKEN
+        fi
+
+        # Remove empty lines and join non-blank lines with a pipe.
+        INCLUDE_REGEX=$(echo "${{ inputs.files }}" | sed '/^[[:space:]]*$/d' | tr '\n' '|' | sed 's/|$//')
+        EXCLUDE_REGEX=$(echo "${{ inputs.exclude }}" | sed '/^[[:space:]]*$/d' | tr '\n' '|' | sed 's/|$//')
+
+        # Set default values if inputs are empty.
+        if [ -z "$INCLUDE_REGEX" ]; then 
+          INCLUDE_REGEX=".*"
+        fi
+        if [ -z "$EXCLUDE_REGEX" ]; then 
+          EXCLUDE_REGEX="a^"
+        fi
+
+        echo "Using include regex: $INCLUDE_REGEX"
+        echo "Using exclude regex: $EXCLUDE_REGEX"
+
+        # Retrieve changed files from the pull request (ignoring removed files).
+        FILES=$(gh api --paginate repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files -q \
+          '.[] | select(.status == "removed" | not) | .filename' || true)
+
+        FILES=$(echo "$FILES" | grep -E "$INCLUDE_REGEX" || true)
+        FILES=$(echo "$FILES" | grep -E -v "$EXCLUDE_REGEX" || true)
+
+        # Remove completely empty lines.
+        FILES=$(echo "$FILES" | sed '/^[[:space:]]*$/d')
+        # Convert the list to a single space-separated line.
+        FILES=$(echo "$FILES" | xargs)
+
+        echo "Got files: [$FILES]"
+
+        COUNT=$(echo "$FILES" | wc -w)
+
+        # Write outputs for this step.
+        echo "all_changed_files=$FILES" >> "$GITHUB_OUTPUT"
+        echo "all_changed_files_count=$COUNT" >> "$GITHUB_OUTPUT"
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
