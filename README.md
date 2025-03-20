@@ -40,10 +40,10 @@ jobs:
         run: |
           echo "All changed files: ${{ steps.changed-files.outputs.all_changed_files }}"
           echo "Number of changed files: ${{ steps.changed-files.outputs.all_changed_files_count }}"
-
+```
 ## How to release
 
-```
+```bash
 git tag v1.1.0   (replace with the needed version)
 git push origin v1.1.0 (replace with the needed version)
 ```
