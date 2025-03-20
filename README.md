@@ -6,8 +6,8 @@ A simple action that retrieves the list of changed files in a pull request using
 
 | Name   | Description                                                                                     | Required | Default |
 |--------|-------------------------------------------------------------------------------------------------|----------|---------|
-| `files`   | File inclusion patterns as regex (one per line). Each line is combined with a pipe (`|`).   | false    | (empty) |
-| `exclude` | File exclusion patterns as regex (one per line). Each line is combined with a pipe (`|`).   | false    | (empty) |
+| `files`   | File inclusion patterns as regex (one per line). Each line is combined with a pipe   | false    | (empty) |
+| `exclude` | File exclusion patterns as regex (one per line). Each line is combined with a pipe   | false    | (empty) |
 
 ## Outputs
 
