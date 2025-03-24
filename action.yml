@@ -43,9 +43,22 @@ runs:
         echo "Using include regex: $INCLUDE_REGEX"
         echo "Using exclude regex: $EXCLUDE_REGEX"
 
-        # Retrieve changed files from the pull request (ignoring removed files).
-        FILES=$(gh api --paginate repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files -q \
-          '.[] | select(.status == "removed" | not) | .filename' || true)
+        # Determine whether this is a pull_request event or a push event.
+        if [ -n "${{ github.event.pull_request.number }}" ]; then
+          echo "Detected pull_request event."
+          FILES=$(gh api --paginate repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files -q \
+            '.[] | select(.status == "removed" | not) | .filename' || true)
+        else
+          echo "Detected push event. Using compare API."
+          FILES=$(gh api repos/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }}/files -q \
+            '.files[].filename' 2>/dev/null || true)
+          # If the compare API returns an error response (starting with '{'), fallback to git diff.
+          FIRST_CHAR=$(echo "$FILES" | head -c 1)
+          if [ "$FIRST_CHAR" = "{" ]; then
+            echo "Compare API returned an error. Falling back to git diff."
+            FILES=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" || true)
+          fi
+        fi
 
         FILES=$(echo "$FILES" | grep -E "$INCLUDE_REGEX" || true)
         FILES=$(echo "$FILES" | grep -E -v "$EXCLUDE_REGEX" || true)
