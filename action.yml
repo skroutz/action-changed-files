@@ -48,6 +48,8 @@ runs:
           echo "Detected pull_request event."
           FILES=$(gh api --paginate repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files -q \
             '.[] | select(.status == "removed" | not) | .filename' || true)
+          ALL_THE_FILES=$(gh api --paginate repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files -q \
+            '.[] | .filename' || true)
         else
           echo "Detected push event. Using compare API."
           FILES=$(gh api repos/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }}/files -q \
@@ -63,18 +65,26 @@ runs:
         FILES=$(echo "$FILES" | grep -E "$INCLUDE_REGEX" || true)
         FILES=$(echo "$FILES" | grep -E -v "$EXCLUDE_REGEX" || true)
 
+        ALL_THE_FILES=$(echo "$ALL_THE_FILES" | grep -E "$INCLUDE_REGEX" || true)
+        ALL_THE_FILES=$(echo "$ALL_THE_FILES" | grep -E -v "$EXCLUDE_REGEX" || true)
+
         # Remove completely empty lines.
         FILES=$(echo "$FILES" | sed '/^[[:space:]]*$/d')
+        ALL_THE_FILES=$(echo "$ALL_THE_FILES" | sed '/^[[:space:]]*$/d')
         # Convert the list to a single space-separated line.
         FILES=$(echo "$FILES" | xargs)
+        ALL_THE_FILES=$(echo "$ALL_THE_FILES" | xargs)
 
         echo "Got files: [$FILES]"
 
         COUNT=$(echo "$FILES" | wc -w)
+        FINAL_COUNTDOWN=$(echo "$ALL_THE_FILES" | wc -w)
 
         # Write outputs for this step.
         echo "all_changed_files=$FILES" >> "$GITHUB_OUTPUT"
         echo "all_changed_files_count=$COUNT" >> "$GITHUB_OUTPUT"
+        echo "all_changed_files_v2_final_final=$ALL_THE_FILES" >> "$GITHUB_OUTPUT"
+        echo "all_changed_files_v2_final_final_countdown=$FINAL_COUNTDOWN" >> "$GITHUB_OUTPUT"
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
