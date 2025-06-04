@@ -5,17 +5,20 @@ outputs:
   all_changed_files:
     description: "A space-separated list of all changed files."
     value: ${{ steps.main.outputs.all_changed_files }}
-  all_changed_files_count:
-    description: "The number of changed files."
-    value: ${{ steps.main.outputs.all_changed_files_count }}
+  new_or_modified_files:
+    description: "A space-separated list of all new or modified files."
+    value: ${{ steps.main.outputs.new_or_modified_files }}
+  removed_files:
+    description: "A space-separated list of all removed files."
+    value: ${{ steps.main.outputs.removed_files }}
 
 inputs:
-  files:
-    description: "File inclusion patterns as regex (one per line). Leave empty to include all files."
+  include_regex:
+    description: "File inclusion pattern as regex. Setting this will only list files matching this pattern. Leave empty to include all files."
     required: false
     default: ""
-  exclude:
-    description: "File exclusion patterns as regex (one per line). Leave empty to exclude no files."
+  exclude_regex:
+    description: "File exclusion pattern as regex. Setting a value here, will exclude files matching this pattern. Leave empty to exclude no files."
     required: false
     default: ""
 
@@ -29,52 +32,53 @@ runs:
         fi
 
         # Remove empty lines and join non-blank lines with a pipe.
-        INCLUDE_REGEX=$(echo "${{ inputs.files }}" | sed '/^[[:space:]]*$/d' | tr '\n' '|' | sed 's/|$//')
-        EXCLUDE_REGEX=$(echo "${{ inputs.exclude }}" | sed '/^[[:space:]]*$/d' | tr '\n' '|' | sed 's/|$//')
+        INCLUDE_REGEX=$(echo "${{ inputs.include_regex }}" | sed '/^[[:space:]]*$/d' | tr '\n' '|' | sed 's/|$//')
+        EXCLUDE_REGEX=$(echo "${{ inputs.exclude_regex }}" | sed '/^[[:space:]]*$/d' | tr '\n' '|' | sed 's/|$//')
 
         # Set default values if inputs are empty.
         if [ -z "$INCLUDE_REGEX" ]; then 
           INCLUDE_REGEX=".*"
         fi
         if [ -z "$EXCLUDE_REGEX" ]; then 
-          EXCLUDE_REGEX="a^"
+          EXCLUDE_REGEX="$^"
         fi
 
         echo "Using include regex: $INCLUDE_REGEX"
         echo "Using exclude regex: $EXCLUDE_REGEX"
 
+        include_filter="select(test(\$include))"
+        exclude_filter="select(test(\$exclude) | not)"
         # Determine whether this is a pull_request event or a push event.
         if [ -n "${{ github.event.pull_request.number }}" ]; then
           echo "Detected pull_request event."
-          FILES=$(gh api --paginate repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files -q \
-            '.[] | select(.status == "removed" | not) | .filename' || true)
+          response="$(gh api --paginate repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files)"
+          expr_all_files=".[].filename"
+          expr_new_or_modified=".[] | select(.status != "removed") | .filename"
+          expr_removed=".[] | select(.status == "removed") | .filename"
         else
           echo "Detected push event. Using compare API."
-          FILES=$(gh api repos/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }}/files -q \
-            '.files[].filename' 2>/dev/null || true)
-          # If the compare API returns an error response (starting with '{'), fallback to git diff.
-          FIRST_CHAR=$(echo "$FILES" | head -c 1)
-          if [ "$FIRST_CHAR" = "{" ]; then
-            echo "Compare API returned an error. Falling back to git diff."
-            FILES=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" || true)
-          fi
+          response=$(gh api repos/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }}/files)
+          expr_all_files=".files[].filename"
+          expr_new_or_modified=".files[] | select(.status != "removed") |.filename"
+          expr_removed=".files[] | select(.status == "removed") | .filename"
         fi
 
-        FILES=$(echo "$FILES" | grep -E "$INCLUDE_REGEX" || true)
-        FILES=$(echo "$FILES" | grep -E -v "$EXCLUDE_REGEX" || true)
+        mapfile -t all_files < <(
+          echo "${response}" | jq -r --arg include "${INCLUDE_REGEX}" --arg exclude "${EXCLUDE_REGEX}" "${expr_all_files} | ${include_filter} | ${exclude_filter}"
+        )
+        mapfile -t new_or_modified_files < <(
+          echo "${response}" | jq -r --arg include "${INCLUDE_REGEX}" --arg exclude "${EXCLUDE_REGEX}" "${expr_new_or_modified} | ${include_filter} | ${exclude_filter}"
+        )
+        mapfile -t removed_files < <(
+          echo "${response}" | jq -r --arg include "${INCLUDE_REGEX}" --arg exclude "${EXCLUDE_REGEX}" "${expr_removed} | ${include_filter} | ${exclude_filter}"
+        )
 
-        # Remove completely empty lines.
-        FILES=$(echo "$FILES" | sed '/^[[:space:]]*$/d')
-        # Convert the list to a single space-separated line.
-        FILES=$(echo "$FILES" | xargs)
-
-        echo "Got files: [$FILES]"
-
-        COUNT=$(echo "$FILES" | wc -w)
+        echo "Got files: [${all_files[*]}]"
 
         # Write outputs for this step.
-        echo "all_changed_files=$FILES" >> "$GITHUB_OUTPUT"
-        echo "all_changed_files_count=$COUNT" >> "$GITHUB_OUTPUT"
+        echo "all_changed_files=${all_files[*]}" >> "$GITHUB_OUTPUT"
+        echo "new_or_modified_files=${new_or_modified_files[*]}" >> "$GITHUB_OUTPUT"
+        echo "removed_files=${removed_files[*]}" >> "$GITHUB_OUTPUT"
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}

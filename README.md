@@ -4,17 +4,18 @@ A simple action that retrieves the list of changed files in a pull request using
 
 ## Inputs
 
-| Name   | Description                                                                                     | Required | Default |
-|--------|-------------------------------------------------------------------------------------------------|----------|---------|
-| `files`   | File inclusion patterns as regex (one per line). Each line is combined with a pipe   | false    | (empty) |
-| `exclude` | File exclusion patterns as regex (one per line). Each line is combined with a pipe   | false    | (empty) |
+| Name            | Description                                                                       | Required   | Default   |
+| --------------- | --------------------------------------------------------------------------------- | ---------- | --------- |
+| `include_regex` | File inclusion pattern as regex. Only files matching the regex will be returned.  | false      | (empty)   |
+| `exclude_regex` | File exclusion pattern as regex. Files matching the regex will be ignored.        | false      | (empty)   |
 
 ## Outputs
 
-| Name                   | Description                                                                              |
-|------------------------|------------------------------------------------------------------------------------------|
-| `all_changed_files`    | A space-separated list of all added, copied, modified, and renamed files.               |
-| `all_changed_files_count` | The total number of files in `all_changed_files`.                                     |
+| Name                     | Description                                                                        |
+| ------------------------ | ---------------------------------------------------------------------------------- |
+| `all_changed_files`      | A space-separated list of all added, copied, modified, renamed and removed files.  |
+| `new_or_modified_files`  | A space-separated list of all added, copied, modified or renamed files.            |
+| `removed_files`          | A space-separated list of all removed files.                                       |
 
 ## Example Usage
 
@@ -26,15 +27,12 @@ jobs:
   example:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
 
       - name: Get changed files
         id: changed-files
-        uses: skroutz/action-changed-files@v1
+        uses: skroutz/action-changed-files@v2
         with:
-          files: |
-            .*\.js
-            .*\.jsx
+          include_regex: .*\.js
 
       - name: Print changed files
         run: |
