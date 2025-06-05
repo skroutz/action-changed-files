@@ -52,15 +52,15 @@ runs:
         if [ -n "${{ github.event.pull_request.number }}" ]; then
           echo "Detected pull_request event."
           response="$(gh api --paginate repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files)"
-          expr_all_files=".[].filename"
-          expr_new_or_modified=".[] | select(.status != "removed") | .filename"
-          expr_removed=".[] | select(.status == "removed") | .filename"
+          expr_all_files='.[].filename'
+          expr_new_or_modified='.[] | select(.status != "removed") | .filename'
+          expr_removed='.[] | select(.status == "removed") | .filename'
         else
           echo "Detected push event. Using compare API."
-          response=$(gh api repos/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }}/files)
-          expr_all_files=".files[].filename"
-          expr_new_or_modified=".files[] | select(.status != "removed") |.filename"
-          expr_removed=".files[] | select(.status == "removed") | .filename"
+          response="$(gh api repos/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }})"
+          expr_all_files='.files[].filename'
+          expr_new_or_modified='.files[] | select(.status != "removed") |.filename'
+          expr_removed='.files[] | select(.status == "removed") | .filename'
         fi
 
         mapfile -t all_files < <(
