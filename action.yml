@@ -46,32 +46,37 @@ runs:
         echo "Using include regex: $INCLUDE_REGEX"
         echo "Using exclude regex: $EXCLUDE_REGEX"
 
-        include_filter="select(test(\$include))"
         exclude_filter="select(test(\$exclude) | not)"
         # Determine whether this is a pull_request event or a push event.
         if [ -n "${{ github.event.pull_request.number }}" ]; then
           echo "Detected pull_request event."
-          response="$(gh api --paginate repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files)"
-          expr_all_files='.[].filename'
-          expr_new_or_modified='.[] | select(.status != "removed") | .filename'
-          expr_removed='.[] | select(.status == "removed") | .filename'
+          gh api --paginate "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" > gh_api_output.json
+          mapfile -t all_files < <(
+            jq -r --arg include "${INCLUDE_REGEX}" --arg exclude "${EXCLUDE_REGEX}" '.[].filename | select(test($include)) | select(test($exclude) | not)' gh_api_output.json
+          )
+
+          mapfile -t new_or_modified_files < <(
+            jq -r --arg include "${INCLUDE_REGEX}" --arg exclude "${EXCLUDE_REGEX}" '.[] | select(.status != "removed") | .filename | select(test($include)) | select(test($exclude) | not)' gh_api_output.json
+          )
+          mapfile -t removed_files < <(
+            jq -r --arg include "${INCLUDE_REGEX}" --arg exclude "${EXCLUDE_REGEX}" ".[] | select(.status == "removed") | .filename | select(test(\$include)) | select(test(\$exclude) | not)" gh_api_output.json
+          )
         else
           echo "Detected push event. Using compare API."
-          response="$(gh api repos/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }})"
-          expr_all_files='.files[].filename'
-          expr_new_or_modified='.files[] | select(.status != "removed") |.filename'
-          expr_removed='.files[] | select(.status == "removed") | .filename'
+          gh api "repos/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }}" > gh_api_output.json
+
+          mapfile -t all_files < <(
+            jq -r --arg include "${INCLUDE_REGEX}" --arg exclude "${EXCLUDE_REGEX}" '.files[].filename | select(test($include)) | select(test($exclude) | not)' gh_api_output.json
+          )
+
+          mapfile -t new_or_modified_files < <(
+            jq -r --arg include "${INCLUDE_REGEX}" --arg exclude "${EXCLUDE_REGEX}" '.files[] | select(.status != "removed") |.filename | select(test($include)) | select(test($exclude) | not)' gh_api_output.json
+          )
+          mapfile -t removed_files < <(
+            jq -r --arg include "${INCLUDE_REGEX}" --arg exclude "${EXCLUDE_REGEX}" ".files[] | select(.status == "removed") | .filename | select(test(\$include)) | select(test(\$exclude) | not)" gh_api_output.json
+          )
         fi
 
-        mapfile -t all_files < <(
-          echo "${response}" | jq -r --arg include "${INCLUDE_REGEX}" --arg exclude "${EXCLUDE_REGEX}" "${expr_all_files} | ${include_filter} | ${exclude_filter}"
-        )
-        mapfile -t new_or_modified_files < <(
-          echo "${response}" | jq -r --arg include "${INCLUDE_REGEX}" --arg exclude "${EXCLUDE_REGEX}" "${expr_new_or_modified} | ${include_filter} | ${exclude_filter}"
-        )
-        mapfile -t removed_files < <(
-          echo "${response}" | jq -r --arg include "${INCLUDE_REGEX}" --arg exclude "${EXCLUDE_REGEX}" "${expr_removed} | ${include_filter} | ${exclude_filter}"
-        )
 
         echo "Got files: [${all_files[*]}]"
 
